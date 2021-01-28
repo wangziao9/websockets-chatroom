@@ -1,6 +1,6 @@
 import asyncio
 import websockets
-from poker import logic, logic_client_connect, logic_client_disconnect #(id:int, ids:list(int),message:str) -> dict(id:int, message:str)
+from logic import logic, logic_client_connect, logic_client_disconnect
 
 queues = dict()
 names = dict()
