@@ -1,15 +1,10 @@
 import asyncio
 import websockets
-from poker import logic #(id:int, ids:list(int),message:str) -> dict(id:int, message:str)
+from poker import logic, logic_client_connect, logic_client_disconnect #(id:int, ids:list(int),message:str) -> dict(id:int, message:str)
 
 queues = dict()
+names = dict()
 top = 0
-def get_all_users():
-    ret = list()
-    for id,queue in queues.items():
-        ret.append(id)
-    ret.sort()
-    return ret
 
 class Chat():
     def __init__(self, id:int, name:str):
@@ -21,26 +16,35 @@ async def send(ws: websockets.WebSocketServerProtocol, client:Chat):
     global queues
     while not client.left:
         msg = await queues[client.id].get()
-        await ws.send(msg)
+        if msg != "ACK_EXIT":
+            await ws.send(msg)
 
 async def receive(ws: websockets.WebSocketServerProtocol, client:Chat):
     global queues
     async for msg in ws:
-        ret = logic(client.id, get_all_users(), msg)
+        if msg == "EXIT":
+            await ws.send("ACK_EXIT")
+            break
+        ret = logic(client.id, names.copy(), msg)
         for id,reply in ret.items():
             await queues[id].put(reply)
     client.left = True
+    clientname = client.name
     del queues[client.id]
-    for id,queue in queues.items():
-        await queue.put("系统提示: "+ f"{client.name}({client.id})" + " 的连接已断开")
+    del names[client.id]
+    ret = logic_client_disconnect(client.id, clientname, names.copy())
+    for id,reply in ret.items():
+        await queues[id].put(reply)
 
 async def handler(ws: websockets.WebSocketServerProtocol, path: str):
     global queues, top
     top += 1
     client = Chat(top, path[1:])
     queues[client.id] = asyncio.Queue(maxsize=10)
-    for id,queue in queues.items():
-        await queue.put("系统提示: "+ f"{client.name}({client.id})" + " 进入了房间")
+    names[client.id] = path[1:]
+    ret = logic_client_connect(client.id, names.copy())
+    for id,reply in ret.items():
+        await queues[id].put(reply)
     await asyncio.gather(receive(ws,client), send(ws,client))
 
 async def server_starter():
